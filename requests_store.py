@@ -1,4 +1,9 @@
+import json
+import os
+
 VALID_CARD_TYPES = ("visitor", "student", "staff")
+VALID_STATUSES = ("requested", "approved", "issued", "returned")
+REQUIRED_KEYS = ("id", "fellow_id", "card_type", "status", "approved_by")
 ASCII_DIGITS = "0123456789"
 
 _requests = {}
@@ -65,3 +70,57 @@ def get_request(request_id):
     if request_id not in _requests:
         raise ValueError("request id not found")
     return dict(_requests[request_id])
+
+
+def _validate_record(record):
+    """Raise ValueError if one request loaded from a file is not valid."""
+    if not isinstance(record, dict):
+        raise ValueError("each request must be an object")
+    if set(record.keys()) != set(REQUIRED_KEYS):
+        raise ValueError("each request must have exactly the keys: " + ", ".join(REQUIRED_KEYS))
+
+    validate_request_id(record["id"])
+    validate_fellow_id(record["fellow_id"])
+    validate_card_type(record["card_type"])
+
+    if record["status"] not in VALID_STATUSES:
+        raise ValueError("invalid status: " + str(record["status"]))
+
+    approved_by = record["approved_by"]
+    if record["status"] == "requested":
+        if approved_by is not None:
+            raise ValueError("a requested request cannot have approved_by")
+    else:
+        if not isinstance(approved_by, str) or approved_by.strip() == "":
+            raise ValueError("approved_by is required once a request is approved")
+
+
+def save_requests(path):
+    """Save all requests to a JSON file without damaging an existing good file."""
+    temp_path = path + ".tmp"
+    data = [dict(_requests[key]) for key in sorted(_requests)]
+    with open(temp_path, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=2)
+    os.replace(temp_path, path)
+
+
+def load_requests(path):
+    """Load requests from a JSON file. Raise ValueError if the file is bad."""
+    with open(path, "r", encoding="utf-8") as file:
+        try:
+            data = json.load(file)
+        except json.JSONDecodeError:
+            raise ValueError("file is not valid JSON")
+
+    if not isinstance(data, list):
+        raise ValueError("file must contain a list of requests")
+
+    loaded = {}
+    for record in data:
+        _validate_record(record)
+        if record["id"] in loaded:
+            raise ValueError("duplicate id in file: " + record["id"])
+        loaded[record["id"]] = dict(record)
+
+    _requests.clear()
+    _requests.update(loaded)
