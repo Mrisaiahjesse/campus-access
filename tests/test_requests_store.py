@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import requests_store
 
@@ -46,6 +47,12 @@ class TestRequestsStore(unittest.TestCase):
         with self.assertRaises(ValueError):
             requests_store.get_request("A\u0661\u0662\u0663")
 
+    def test_a000_and_padded_ids_rejected(self):
+        requests_store.create_request("F001", "visitor")
+        for bad_id in ["A000", "A0001"]:
+            with self.assertRaises(ValueError):
+                requests_store.get_request(bad_id)
+
     def test_get_request_returns_copy(self):
         requests_store.create_request("F001", "visitor")
         copy = requests_store.get_request("A001")
@@ -68,6 +75,12 @@ class TestRequestsStore(unittest.TestCase):
             requests_store.load_requests(self.path)
         self.assertEqual(len(requests_store._requests), 1)
 
+    def test_missing_file_raises_and_data_kept(self):
+        requests_store.create_request("F001", "visitor")
+        with self.assertRaises(FileNotFoundError):
+            requests_store.load_requests(self.path)
+        self.assertEqual(len(requests_store._requests), 1)
+
     def test_duplicate_ids_rejected(self):
         record = {
             "id": "A001",
@@ -84,6 +97,44 @@ class TestRequestsStore(unittest.TestCase):
         self.write_json([{"id": "A001", "fellow_id": "F001"}])
         with self.assertRaises(ValueError):
             requests_store.load_requests(self.path)
+
+    def test_failed_save_keeps_old_file(self):
+        requests_store.create_request("F001", "visitor")
+        requests_store.save_requests(self.path)
+        with open(self.path, "r", encoding="utf-8") as file:
+            before = file.read()
+
+        requests_store.create_request("F002", "staff")
+        with mock.patch("requests_store.json.dump", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                requests_store.save_requests(self.path)
+
+        with open(self.path, "r", encoding="utf-8") as file:
+            after = file.read()
+        self.assertEqual(before, after)
+        self.assertFalse(os.path.exists(self.path + ".tmp"))
+
+    def test_update_request_full_workflow(self):
+        requests_store.create_request("F001", "visitor")
+        requests_store.update_request("A001", "approved", "M01")
+        requests_store.update_request("A001", "issued")
+        result = requests_store.update_request("A001", "returned")
+        self.assertEqual(result["status"], "returned")
+        self.assertEqual(result["approved_by"], "M01")
+
+    def test_update_request_illegal_transition_keeps_record(self):
+        requests_store.create_request("F001", "visitor")
+        before = requests_store.get_request("A001")
+        with self.assertRaises(ValueError):
+            requests_store.update_request("A001", "issued")
+        self.assertEqual(requests_store.get_request("A001"), before)
+
+    def test_update_request_blank_approver_keeps_record(self):
+        requests_store.create_request("F001", "visitor")
+        before = requests_store.get_request("A001")
+        with self.assertRaises(ValueError):
+            requests_store.update_request("A001", "approved", "   ")
+        self.assertEqual(requests_store.get_request("A001"), before)
 
 
 if __name__ == "__main__":

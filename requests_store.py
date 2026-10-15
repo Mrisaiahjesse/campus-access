@@ -3,6 +3,7 @@ import os
 
 VALID_CARD_TYPES = ("visitor", "student", "staff")
 VALID_STATUSES = ("requested", "approved", "issued", "returned")
+NEXT_STATUS = {"requested": "approved", "approved": "issued", "issued": "returned"}
 REQUIRED_KEYS = ("id", "fellow_id", "card_type", "status", "approved_by")
 ASCII_DIGITS = "0123456789"
 
@@ -31,9 +32,13 @@ def validate_request_id(request_id):
         raise ValueError("request_id must be text")
     if len(request_id) < 4 or request_id[0] != "A":
         raise ValueError("request_id must look like A001")
-    for character in request_id[1:]:
+    digits = request_id[1:]
+    for character in digits:
         if character not in ASCII_DIGITS:
             raise ValueError("request_id must look like A001")
+    number = int(digits)
+    if number == 0 or request_id != "A" + str(number).zfill(3):
+        raise ValueError("request_id must look like A001")
 
 
 def _next_id():
@@ -72,6 +77,36 @@ def get_request(request_id):
     return dict(_requests[request_id])
 
 
+def update_request(request_id, status, approved_by=None):
+    """Move a request to its next status and return a copy.
+
+    Every check happens before anything is written, so a rejected
+    update leaves the stored record exactly as it was.
+    """
+    validate_request_id(request_id)
+    if request_id not in _requests:
+        raise ValueError("request id not found")
+    if not isinstance(status, str) or status not in VALID_STATUSES:
+        raise ValueError("invalid status")
+
+    current = _requests[request_id]
+    if NEXT_STATUS.get(current["status"]) != status:
+        raise ValueError("cannot move from " + current["status"] + " to " + status)
+
+    if status == "approved":
+        if not isinstance(approved_by, str) or approved_by.strip() == "":
+            raise ValueError("approved_by cannot be blank")
+        new_approver = approved_by.strip()
+    else:
+        if approved_by is not None:
+            raise ValueError("approved_by can only be set when approving")
+        new_approver = current["approved_by"]
+
+    current["status"] = status
+    current["approved_by"] = new_approver
+    return dict(current)
+
+
 def _validate_record(record):
     """Raise ValueError if one request loaded from a file is not valid."""
     if not isinstance(record, dict):
@@ -99,13 +134,23 @@ def save_requests(path):
     """Save all requests to a JSON file without damaging an existing good file."""
     temp_path = path + ".tmp"
     data = [dict(_requests[key]) for key in sorted(_requests)]
-    with open(temp_path, "w", encoding="utf-8") as file:
-        json.dump(data, file, indent=2)
-    os.replace(temp_path, path)
+    try:
+        with open(temp_path, "w", encoding="utf-8") as file:
+            json.dump(data, file, indent=2)
+        os.replace(temp_path, path)
+    except Exception:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
 
 
 def load_requests(path):
-    """Load requests from a JSON file. Raise ValueError if the file is bad."""
+    """Load requests from a JSON file.
+
+    Raise FileNotFoundError if the file does not exist and ValueError
+    if the file is bad. Existing data is only replaced when the whole
+    file is valid.
+    """
     with open(path, "r", encoding="utf-8") as file:
         try:
             data = json.load(file)
