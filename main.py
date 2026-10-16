@@ -1,5 +1,4 @@
-# Entry point for the Campus Access app.
-# Engineer B's run_menu() will be started from here later.
+from cli import run_menu
 
 if __name__ == "__main__":
-    print("Campus Access app - setup complete")
+    run_menu()
