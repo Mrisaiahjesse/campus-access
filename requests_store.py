@@ -77,6 +77,13 @@ def get_request(request_id):
     return dict(_requests[request_id])
 
 
+def list_requests():
+    """Return a list of copies of all requests, in ID order (A001, A002, ...)."""
+    all_requests = list(_requests.values())
+    all_requests.sort(key=lambda request: int(request["id"][1:]))
+    return [dict(request) for request in all_requests]
+
+
 def update_request(request_id, status, approved_by=None):
     """Move a request to its next status and return a copy.
 
