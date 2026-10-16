@@ -136,6 +136,29 @@ class TestRequestsStore(unittest.TestCase):
             requests_store.update_request("A001", "approved", "   ")
         self.assertEqual(requests_store.get_request("A001"), before)
 
+    def test_list_requests_empty(self):
+        self.assertEqual(requests_store.list_requests(), [])
+
+    def test_list_requests_in_id_order(self):
+        requests_store.create_request("F001", "visitor")
+        requests_store.create_request("F002", "staff")
+        requests_store.create_request("F003", "student")
+        ids = [request["id"] for request in requests_store.list_requests()]
+        self.assertEqual(ids, ["A001", "A002", "A003"])
+
+    def test_list_requests_returns_copies(self):
+        requests_store.create_request("F001", "visitor")
+        result = requests_store.list_requests()
+        result[0]["status"] = "issued"
+        self.assertEqual(requests_store.get_request("A001")["status"], "requested")
+
+    def test_list_requests_shows_updated_status(self):
+        requests_store.create_request("F001", "visitor")
+        requests_store.update_request("A001", "approved", "M01")
+        result = requests_store.list_requests()
+        self.assertEqual(result[0]["status"], "approved")
+        self.assertEqual(result[0]["approved_by"], "M01")
+
 
 if __name__ == "__main__":
     unittest.main()
