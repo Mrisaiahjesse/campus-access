@@ -26,7 +26,7 @@ def issue_card(request_id):
     if not request["approved_by"] or request["approved_by"].strip() == "":
         raise ValueError("Cannot issue a card without an approver")
 
-    update_request(request_id, "issued", request["approved_by"])
+    update_request(request_id, "issued")
     return get_request(request_id)
 
 
@@ -37,5 +37,5 @@ def return_card(request_id):
     if request["status"] != "issued":
         raise ValueError("Only an issued card can be returned")
 
-    update_request(request_id, "returned", request["approved_by"])
+    update_request(request_id, "returned")
     return get_request(request_id)
